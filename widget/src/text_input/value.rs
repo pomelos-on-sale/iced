@@ -117,11 +117,11 @@ impl Value {
     }
 
     /// Returns a new [`Value`] with all its graphemes replaced with the
-    /// dot ('•') character.
+    /// dot ('●') character.
     pub fn secure(&self) -> Self {
         Self {
             graphemes: std::iter::repeat_n(
-                String::from("•"),
+                String::from("●"),
                 self.graphemes.len(),
             )
             .collect(),
