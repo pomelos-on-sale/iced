@@ -804,9 +804,35 @@ where
 
                 let had_input_method = shell.input_method().is_enabled();
 
+                let is_touch_scrolling =
+                    matches!(state.interaction, Interaction::TouchScrolling(_));
+
+                let cancel_event;
+                let event_for_content = match event {
+                    Event::Touch(touch::Event::FingerLifted { id, position })
+                        if is_touch_scrolling =>
+                    {
+                        cancel_event = Event::Touch(touch::Event::FingerLost {
+                            id: *id,
+                            position: *position,
+                        });
+                        &cancel_event
+                    }
+                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+                        if is_touch_scrolling =>
+                    {
+                        cancel_event = Event::Touch(touch::Event::FingerLost {
+                            id: touch::Finger(0),
+                            position: cursor.position().unwrap_or(Point::ORIGIN),
+                        });
+                        &cancel_event
+                    }
+                    _ => event,
+                };
+
                 self.content.as_widget_mut().update(
                     &mut tree.children[0],
-                    event,
+                    event_for_content,
                     content,
                     cursor,
                     renderer,
@@ -835,7 +861,15 @@ where
                             | touch::Event::FingerLost { .. }
                     )
             ) {
+                let was_touch_scrolling =
+                    matches!(state.interaction, Interaction::TouchScrolling(_));
+
                 state.interaction = Interaction::None;
+
+                if was_touch_scrolling {
+                    shell.capture_event();
+                }
+
                 return;
             }
 
@@ -945,6 +979,32 @@ where
                                 if let Some(position) = cursor_over_scrollable {
                                     state.interaction =
                                         Interaction::TouchScrolling(position);
+
+                                    // When claiming the drag gesture, cancel active children
+                                    let translation = state.translation(
+                                        self.direction,
+                                        bounds,
+                                        content_bounds,
+                                    );
+                                    let cancel = Event::Touch(touch::Event::FingerLost {
+                                        id: touch::Finger(0),
+                                        position,
+                                    });
+                                    self.content.as_widget_mut().update(
+                                        &mut tree.children[0],
+                                        &cancel,
+                                        content,
+                                        cursor,
+                                        renderer,
+                                        clipboard,
+                                        shell,
+                                        &Rectangle {
+                                            y: bounds.y + translation.y,
+                                            x: bounds.x + translation.x,
+                                            ..bounds
+                                        },
+                                    );
+                                    shell.request_redraw();
                                 } else {
                                     return;
                                 }
